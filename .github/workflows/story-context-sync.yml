@@ -7,15 +7,22 @@ name: Story context sync
 #   Cả ba thường vẫn là placeholder dù mọi ticket con đã đóng. Template thiết kế đúng,
 #   thói quen điền tay thì không tồn tại. Đây là loại việc máy nên làm.
 #
-# ĐƠN VỊ LÀ ISSUE, KHÔNG PHẢI PR — một issue thường có nhiều PR:
-#   Nếu mỗi PR merged lại ghi story bằng riêng file của mình thì lần ghi sau
-#   xoá mất kết quả lần trước. Nên bot lấy
-#   TOÀN BỘ PR đã merged của issue rồi mới ghi, và chỉ ghi khi issue ĐÃ ĐÓNG.
+# PR MERGED LÀ SỰ KIỆN DUY NHẤT — không xét trạng thái issue:
+#   File đã vào nhánh chính thì link tới nó là đúng, ticket còn mở hay đã đóng
+#   không đổi điều đó. Chờ issue đóng mới ghi thì gặp bẫy thứ tự: PR merge trước,
+#   lúc đó issue còn mở nên bot bỏ qua; rồi `issues: closed` lại bắn ở repo QUẢN LÝ
+#   nên repo này không nghe được ⇒ story trống vĩnh viễn.
 #
-# PR merged chỉ là TÍN HIỆU đánh thức, không phải nguồn dữ liệu:
-#   sự kiện `issues: closed` bắn ở repo QUẢN LÝ nên workflow ở đây không nghe được.
-#   PR merged là thứ gần nhất bắn ở repo này, và thường chính nó đóng issue.
-#   Issue đóng tay, không qua PR nào (ca thật: #123) ⇒ chạy tay bằng workflow_dispatch.
+# PR merged là TÍN HIỆU, còn DỮ LIỆU lấy từ TOÀN BỘ PR merged của issue:
+#   Một issue thường có nhiều PR. Nếu mỗi PR chỉ ghi phần file của riêng nó thì
+#   lần ghi sau xoá mất kết quả lần trước. Gom lại từ đầu mỗi lần thì luôn đúng,
+#   và chạy lại bao nhiêu lần cũng cho cùng một kết quả.
+#
+# KHÔNG CÓ CRON — có chủ ý:
+#   Từng có một workflow quét định kỳ để lật nhãn "tạm → đã chốt" khi issue đóng.
+#   Đã bỏ cả nhãn lẫn cron: nhãn chép lại thứ nhìn thẳng vào ticket là biết, còn
+#   cron sau đó chỉ còn tác dụng chạy lại khi lượt sync hỏng — việc chưa xảy ra
+#   lần nào, và `workflow_dispatch` bên dưới xử lý được trong 10 giây.
 #
 # KHÔNG CÓ `paths:` — CÓ CHỦ Ý:
 #   Script tự lọc theo file PR đụng và theo screen_id. Thêm bộ lọc ở đây là đúc ra

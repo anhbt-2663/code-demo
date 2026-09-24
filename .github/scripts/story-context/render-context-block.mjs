@@ -62,16 +62,14 @@ export function renderContextBlock(ctx) {
     `synced_at: ${JSON.stringify(ctx.synced_at)}`,
   ].join("\n");
 
-  // 🟡 vs 🟢 — issue nguồn còn mở thì link là TẠM: có thể còn PR nữa đang tới.
-  // Không ghi gì cho tới khi issue đóng thì gặp bẫy thứ tự (PR merge trước khi
-  // issue đóng ⇒ không sự kiện nào bắn lại ⇒ story trống mãi), nên ghi sớm và
-  // nói rõ trạng thái là cách trung thực hơn.
-  const status = ctx.frozen
-    ? `🟢 **Đã chốt** — issue #${ctx.source_issue} đã đóng`
-    : `🟡 **Tạm** — issue #${ctx.source_issue} còn mở, có thể còn thay đổi`;
-
+  // KHÔNG có nhãn "tạm / đã chốt" — có chủ ý.
+  //
+  // Bảng luôn phản ánh trạng thái ĐÃ MERGED mới nhất: spec đổi tiếp ⇒ PR mới ⇒
+  // merge ⇒ bảng cập nhật. Một nhãn nói "ticket DOCUMENTATION đã đóng hay chưa"
+  // là chép lại thứ nhìn thẳng vào ticket là biết — thông tin trùng lặp, và mọi
+  // bản sao đều có ngày lệch khỏi bản gốc.
   const note =
-    `<sub>${status} · 🤖 \`story-context-sync\` · ` +
+    `<sub>🤖 \`story-context-sync\` · nguồn #${ctx.source_issue} · ` +
     `${ctx.synced_at.slice(0, 16).replace("T", " ")} UTC</sub>`;
 
   return [
@@ -82,16 +80,18 @@ export function renderContextBlock(ctx) {
     note,
     "",
     START,
-    `frozen: ${ctx.frozen === true}`,
     yaml,
     END,
     ...renderAmbiguous(ctx.ambiguous),
   ].join("\n");
 }
 
-/** Ô còn 2+ ứng viên: ghi phần chắc rồi để lại checkbox.
- *  Bot chạy khi PR ĐÃ merged — không có ai ngồi đó để hỏi đồng bộ.
- *  Hỏi rồi đi, `story-context-resolve` nhặt câu trả lời sau. */
+/** Ô còn 2+ ứng viên: ghi phần chắc rồi để lại checkbox cho người chọn.
+ *
+ *  Bot chạy khi PR ĐÃ merged, không có ai ngồi đó để hỏi đồng bộ — nên hỏi rồi đi.
+ *  Hiện KHÔNG có workflow nào nhặt lại ô đã tick: người tự sửa dòng trong bảng.
+ *  Ca này hiếm (bộ lọc theo screen_id đã loại gần hết mơ hồ), nên chưa đáng dựng
+ *  thêm một workflow chỉ để đọc checkbox. */
 function renderAmbiguous(ambiguous) {
   const entries = Object.entries(ambiguous ?? {});
   if (entries.length === 0) return [];
