@@ -1,0 +1,63 @@
+name: PR link gate
+
+# Chặn PR không liên kết được với issue ở repo quản lý.
+#
+# VÌ SAO CÓ WORKFLOW NÀY — đo trên repo thật, không phải giả định:
+#   Các PR merged gần nhất đều có `closingIssuesReferences = 0`. Hai nguyên nhân:
+#   dạng `Close #[437]` có dấu ngoặc vuông nên GitHub không parse được, và
+#   placeholder `Close #[ID Task]` thì chưa ai điền. Tức là không PR nào liên kết
+#   được với issue, và không gì báo cho ai biết điều đó.
+#
+# VÌ SAO KHÔNG DÙNG `closingIssuesReferences`:
+#   Từ khoá `Closes` chỉ tự đóng issue CÙNG repo. Issue của dự án nằm ở
+#   anhbt-2663/pm-demo, khác repo code này, nên liên kết chéo repo
+#   không đảm bảo sinh ra reference. Parse dòng cố định + gọi API xác minh là
+#   cách duy nhất chắc chắn, và bắt được cả lỗi gõ sai số.
+#
+# VÌ SAO FAIL CHỨ KHÔNG WARNING:
+#   Cổng chỉ cảnh báo thì PR vẫn merge được với link hỏng. Quy ước không có cổng chặn là quy ước sẽ bị quên.
+
+on:
+  pull_request:
+    # KHÔNG có `synchronize` — CÓ CHỦ Ý.
+    #
+    # `synchronize` bắn mỗi lần push vào nhánh PR, mà gate này chỉ đọc MÔ TẢ PR —
+    # push code không đổi mô tả. Trên repo nhiều PR, thêm `synchronize` làm
+    # số lượt tăng gấp đôi, toàn bộ phần tăng là chạy không.
+    # Repo private nên mỗi lượt bị tính tròn 1 phút, dù job chỉ chạy 20 giây —
+    # số LƯỢT mới là thứ tốn tiền, không phải thời lượng.
+    #
+    # `edited` giữ lại vì đó là đường sửa sai: gate đỏ → dev sửa mô tả → chạy lại.
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: pr-link-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts/story-context
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Issue phải liên kết được
+        env:
+          # Cần quyền ĐỌC repo quản lý. Thiếu secret thì gate báo rõ lý do
+          # thay vì xanh thầm — xanh thầm là cách lưới chết mà không ai biết.
+          GH_TOKEN: ${{ secrets.PM_REPO_TOKEN }}
+          # Repo chứa issue. Đặt biến repo PM_REPO khi chạy trên cặp repo khác (bản thử nghiệm).
+          PM_REPO: ${{ vars.PM_REPO || 'anhbt-2663/pm-demo' }}
+          # Qua env chứ KHÔNG nội suy thẳng vào `run:` — body PR là nội dung người
+          # ngoài viết được, nội suy thẳng là mở đường script injection.
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: node .github/scripts/story-context/check-pr-issue-link.mjs

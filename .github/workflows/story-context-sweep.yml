@@ -1,0 +1,88 @@
+name: Story context sweep
+
+# Quét định kỳ issue vừa đóng ở repo quản lý và đồng bộ story cha của chúng.
+#
+# VÌ SAO CÓ WORKFLOW NÀY — bẫy thứ tự:
+#   `story-context-sync` chạy khi PR merged. Nhưng PR thường merge TRƯỚC khi ai đó
+#   đóng issue, nên khoảnh khắc "spec đã chốt" (issue closed) không có sự kiện nào
+#   bắn ở repo này — `issues: closed` bắn ở repo QUẢN LÝ.
+#   Cron là cách tự chủ nhất: không cần đụng repo kia, không cần team khác duyệt.
+#
+# VÌ SAO KHÔNG DÙNG repository_dispatch TỪ BOT n8n:
+#   Làm được, nhưng gắn số phận của lưới này vào một hệ thống khác do người khác vận hành.
+#   Cron chậm hơn 20 phút và đổi lại là tự chủ hoàn toàn. Link tài liệu không gấp.
+#
+# CHẠY LẠI LÀ VÔ HẠI:
+#   Mỗi lần ghi, bot gom LẠI toàn bộ PR merged của issue rồi ghi đè cả khối. Quét
+#   trùng nhau (cửa sổ 24h, cron 20 phút) chỉ ghi lại cùng nội dung. Đó là chủ ý —
+#   thà ghi thừa còn hơn bỏ sót một issue vì cửa sổ hẹp quá.
+
+on:
+  schedule:
+    # Mỗi giờ, 08:00–18:00 giờ VN (01–11 UTC), THỨ HAI ĐẾN THỨ SÁU.
+    #
+    # VÌ SAO KHÔNG CHẠY LIÊN TỤC — repo này PRIVATE nên Actions tính phút, và
+    # GitHub tính TRÒN LÊN 1 phút mỗi job dù job chỉ chạy 30 giây:
+    #     mỗi 20 phút  → 2.160 lượt/tháng → ~2.160 phút
+    #     lịch này     →   242 lượt/tháng →   ~242 phút
+    # Hạn mức private là 2.000 (Free) / 3.000 (Team) phút, mà repo đã có 6 workflow
+    # CI/CD đang dùng chung quota đó. Cron dày sẽ bỏ đói ci-backend/ci-frontend —
+    # thiệt hại thật nằm ở đấy chứ không phải ở tiền.
+    #
+    # Issue được đóng trong giờ làm việc, nên quét ngoài giờ gần như không bắt
+    # được gì. Ca hiếm (đóng lúc nửa đêm) thì lượt 08:00 hôm sau nhặt nốt, vì
+    # cửa sổ quét rộng hơn nhịp chạy.
+    - cron: '0 1-11 * * 1-5'
+  # Bot n8n hoặc workflow ở repo quản lý có thể bắn thẳng vào đây khi issue đóng
+  # (phương án B/C), lúc đó cron chỉ còn là lưới an toàn. Payload: { issue_ref }.
+  repository_dispatch:
+    types: [issue-closed]
+  workflow_dispatch:
+    inputs:
+      hours:
+        description: 'Quét ngược bao nhiêu giờ (mặc định 16; chạy bù cuối tuần đặt 72)'
+        required: false
+        default: '16'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Không chạy chồng: hai lượt quét cùng lúc sẽ ghi đè nhau trên cùng story.
+  group: story-context-sweep
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts/story-context
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Bot bắn thẳng một issue cụ thể ⇒ đồng bộ đúng cái đó, bỏ qua lượt quét.
+      - name: Đồng bộ một issue (repository_dispatch)
+        if: github.event_name == 'repository_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.PM_REPO_TOKEN }}
+          # Repo chứa issue. Đặt biến repo PM_REPO khi chạy trên cặp repo khác (bản thử nghiệm).
+          PM_REPO: ${{ vars.PM_REPO || 'anhbt-2663/pm-demo' }}
+          ISSUE_REF: ${{ github.event.client_payload.issue_ref }}
+          DRY_RUN: ${{ vars.STORY_CONTEXT_DRY_RUN || '0' }}
+        run: node .github/scripts/story-context/sync-story-context.mjs
+
+      - name: Quét issue vừa đóng
+        if: github.event_name != 'repository_dispatch'
+        env:
+          GH_TOKEN: ${{ secrets.PM_REPO_TOKEN }}
+          # Repo chứa issue. Đặt biến repo PM_REPO khi chạy trên cặp repo khác (bản thử nghiệm).
+          PM_REPO: ${{ vars.PM_REPO || 'anhbt-2663/pm-demo' }}
+          # Cửa sổ 16h phủ hết đêm trước (18:00 → 08:00). Chi tiết trong script.
+          SWEEP_HOURS: ${{ inputs.hours || '16' }}
+          DRY_RUN: ${{ vars.STORY_CONTEXT_DRY_RUN || '0' }}
+        run: node .github/scripts/story-context/sweep-closed-issues.mjs

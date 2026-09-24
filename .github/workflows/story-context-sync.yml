@@ -1,0 +1,68 @@
+name: Story context sync
+
+# PR merged ⇒ ghi Spec / Design / API docs vào `References & Dependencies` của story cha.
+#
+# VÌ SAO CÓ WORKFLOW NÀY — ca thật:
+#   Template story có sẵn ba ô `- Design: [Link Figma]` / `[Link]` / `[Link]`.
+#   Cả ba thường vẫn là placeholder dù mọi ticket con đã đóng. Template thiết kế đúng,
+#   thói quen điền tay thì không tồn tại. Đây là loại việc máy nên làm.
+#
+# ĐƠN VỊ LÀ ISSUE, KHÔNG PHẢI PR — một issue thường có nhiều PR:
+#   Nếu mỗi PR merged lại ghi story bằng riêng file của mình thì lần ghi sau
+#   xoá mất kết quả lần trước. Nên bot lấy
+#   TOÀN BỘ PR đã merged của issue rồi mới ghi, và chỉ ghi khi issue ĐÃ ĐÓNG.
+#
+# PR merged chỉ là TÍN HIỆU đánh thức, không phải nguồn dữ liệu:
+#   sự kiện `issues: closed` bắn ở repo QUẢN LÝ nên workflow ở đây không nghe được.
+#   PR merged là thứ gần nhất bắn ở repo này, và thường chính nó đóng issue.
+#   Issue đóng tay, không qua PR nào (ca thật: #123) ⇒ chạy tay bằng workflow_dispatch.
+#
+# KHÔNG CÓ `paths:` — CÓ CHỦ Ý:
+#   Script tự lọc theo file PR đụng và theo screen_id. Thêm bộ lọc ở đây là đúc ra
+#   một danh sách thứ hai phải giữ đồng bộ, và đã có tiền lệ hỏng vì quên thêm một dòng vào `paths:` . Job rẻ — cứ chạy rồi thoát sớm.
+
+on:
+  pull_request:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      issue_ref:
+        description: 'Issue cần đồng bộ, dạng owner/repo#N (vd anhbt-2663/pm-demo#123)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  # Nối đuôi theo story chứ không huỷ: hai PR cùng story merge sát nhau đều phải
+  # được ghi. `cancel-in-progress` ở đây sẽ làm mất một lần cập nhật.
+  group: story-context-sync-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts/story-context
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Ghi context vào story cha
+        env:
+          # Cần `Issues: write` trên anhbt-2663/pm-demo.
+          # GITHUB_TOKEN mặc định KHÔNG ghi được sang repo khác.
+          GH_TOKEN: ${{ secrets.PM_REPO_TOKEN }}
+          # Repo chứa issue. Đặt biến repo PM_REPO khi chạy trên cặp repo khác (bản thử nghiệm).
+          PM_REPO: ${{ vars.PM_REPO || 'anhbt-2663/pm-demo' }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Chỉ có khi chạy tay — dùng cho issue đóng bằng tay, không qua PR nào.
+          ISSUE_REF: ${{ inputs.issue_ref }}
+          # Đặt DRY_RUN=1 ở lần chạy thật đầu tiên: in ra body sẽ ghi, không ghi thật.
+          DRY_RUN: ${{ vars.STORY_CONTEXT_DRY_RUN || '0' }}
+        run: node .github/scripts/story-context/sync-story-context.mjs

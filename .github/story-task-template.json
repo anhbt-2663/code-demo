@@ -1,0 +1,73 @@
+{
+  "_comment": [
+    "Bộ task con sinh ra cho mỗi story. BrSE sửa file này được, không cần đụng code.",
+    "",
+    "`{name}` được thay bằng tên màn lấy từ tiêu đề story:",
+    "   [STORY] [3-1] Request update PW  →  name = 'Request update PW'",
+    "",
+    "Mẫu lấy từ quy ước đặt tên đang dùng.",
+    "Tên task hay trôi theo thời gian; sinh tự động là cách kéo về một mối.",
+    "",
+    "`enabled: false` ⇒ bỏ qua, không tạo. Đổi khi story không cần task đó.",
+    "Thứ tự trong mảng = thứ tự issue được tạo."
+  ],
+
+  "tasks": [
+    {
+      "enabled": true,
+      "title": "[DOCUMENTATION] {name}",
+      "labels": ["type:documentation"],
+      "body": "### Overview\n\nSpec màn {screen_id} — {name}\n\n### Output Document Link\n\n_Điền link tài liệu sau khi hoàn thành_\n"
+    },
+    {
+      "enabled": true,
+      "title": "[BE TASK] Doc API {name}",
+      "labels": ["type:devtask", "team:backend", "category:task"],
+      "body": "### Task Type\n\nDevelopment - Backend\n\n### Task Category\n\nTask\n\n### Specification\n\nViết hợp đồng API + khai báo OpenAPI cho màn {screen_id}.\n\n### Impact Range\n\n_No response_\n"
+    },
+    {
+      "enabled": true,
+      "title": "[BE TASK] Implement API {name}",
+      "labels": ["type:devtask", "team:backend", "category:task"],
+      "body": "### Task Type\n\nDevelopment - Backend\n\n### Task Category\n\nTask\n\n### Specification\n\nImplement API theo hợp đồng đã chốt ở task Doc API.\n\n### Impact Range\n\n_No response_\n"
+    },
+    {
+      "enabled": true,
+      "title": "[FE TASK] Implement Screen {name}",
+      "labels": ["type:devtask", "team:frontend", "category:task"],
+      "body": "### Task Type\n\nDevelopment - Frontend\n\n### Task Category\n\nTask\n\n### Specification\n\nDựng màn {screen_id} theo spec + design, rồi ráp API.\n\n### Impact Range\n\n_No response_\n"
+    },
+    {
+      "enabled": true,
+      "title": "[TEST DESIGN] {name}",
+      "labels": ["type:testdesign"],
+      "body": "### Overview\n\nThiết kế test case cho màn {screen_id}.\n"
+    },
+    {
+      "enabled": true,
+      "title": "[TEST EXECUTION] {name}",
+      "labels": ["type:testexecution"],
+      "body": "### Overview\n\nThực thi test cho màn {screen_id}.\n"
+    },
+
+    {
+      "_comment": "Ba task QA BUG thường được tạo sẵn từ đầu. Story không cần thì đổi enabled=false.",
+      "enabled": true,
+      "title": "[QA BUG] [FE TASK] {name}",
+      "labels": ["type:qabug", "type:devtask", "team:frontend"],
+      "body": "### Overview\n\nSửa bug FE phát hiện khi test màn {screen_id}.\n"
+    },
+    {
+      "enabled": true,
+      "title": "[QA BUG] [BE TASK] {name}",
+      "labels": ["type:qabug", "type:devtask", "team:backend"],
+      "body": "### Overview\n\nSửa bug BE phát hiện khi test màn {screen_id}.\n"
+    },
+    {
+      "enabled": true,
+      "title": "[QA BUG] [VERIFY BUG] {name}",
+      "labels": ["type:qabug"],
+      "body": "### Overview\n\nVerify lại bug đã sửa của màn {screen_id}.\n"
+    }
+  ]
+}
