@@ -49,15 +49,17 @@ async function main() {
   const issue = await fetchIssueWithParent(ref, TOKEN);
   if (!issue) skip(`không đọc được issue ${ref.owner}/${ref.repo}#${ref.number} (thiếu quyền?)`);
 
-  // GHI CẢ KHI ISSUE CÒN MỞ — có chủ ý.
+  // TRẠNG THÁI ISSUE KHÔNG ĐƯỢC XÉT TỚI — có chủ ý.
   //
-  // Mỗi lần chạy, bot gom LẠI toàn bộ PR merged của issue rồi ghi đè cả khối, nên
-  // ghi sớm không mất gì: lần sau gom lại là đủ. Còn nếu chờ issue đóng mới ghi thì
-  // gặp bẫy thứ tự — PR thường merge TRƯỚC khi ai đó đóng issue, lúc bot chạy thì
-  // issue còn OPEN, bot bỏ qua, và không sự kiện nào bắn lại nữa ⇒ story trống mãi.
+  // Đơn vị kích hoạt là PR MERGED, không phải vòng đời issue: file đã vào nhánh
+  // chính thì link tới nó là đúng, bất kể ticket còn mở hay đã đóng.
+  // Chờ issue đóng mới ghi thì gặp bẫy thứ tự — PR thường merge TRƯỚC khi ai đó
+  // đóng issue, lúc bot chạy thì issue còn OPEN, bot bỏ qua, và sự kiện
+  // `issues: closed` lại bắn ở repo QUẢN LÝ nên repo này không nghe được
+  // ⇒ story trống vĩnh viễn.
   //
-  // Khác biệt chỉ nằm ở nhãn: 🟡 tạm (còn mở) · 🟢 đã chốt (đã đóng).
-  const frozen = issue.state === "CLOSED";
+  // Ghi lại nhiều lần là vô hại: mỗi lần chạy đều gom LẠI toàn bộ PR merged của
+  // issue rồi dựng lại cả khối, nên cùng dữ liệu vào thì cùng kết quả ra.
 
   const story = issue.parent;
   if (!story) skip(`issue #${issue.number} không có story cha`);
@@ -99,7 +101,6 @@ async function main() {
     screen_id: screenId,
     slots,
     ambiguous,
-    frozen,
     source_issue: issue.number,
     synced_at: new Date().toISOString(),
   });
@@ -134,8 +135,9 @@ async function main() {
  *   - PR merged  → đọc dòng `Related Issue:` trong body PR
  *   - chạy tay   → truyền thẳng ISSUE_REF `owner/repo#N`
  *
- * Đường chạy tay tồn tại vì issue có thể được đóng BẰNG TAY, không qua PR nào —
- * lúc đó không sự kiện nào bắn ở repo code. Đã gặp: issue đóng tay kèm comment, không có PR nào.
+ * Đường chạy tay là cách chạy LẠI khi một lượt sync hỏng (lỗi mạng, GitHub API
+ * chập chờn). Không có cron nào tự chữa, nên đây là lưới duy nhất — và nó đủ:
+ * lượt hỏng hiện đỏ trong tab Actions, bấm Run workflow là xong.
  */
 async function resolveIssueRef() {
   if (process.env.ISSUE_REF) {
