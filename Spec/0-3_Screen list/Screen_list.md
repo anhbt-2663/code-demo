@@ -12,3 +12,4 @@
 | ID | Tên màn | URL |
 | --- | --- | --- |
 | 9-1 | Notice List | /notices |
+| 9-2 | Notice Detail | /notices/{noticeId} |
