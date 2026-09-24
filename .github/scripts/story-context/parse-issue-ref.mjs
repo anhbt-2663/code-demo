@@ -100,19 +100,43 @@ export function mergedPullRequests(issue, codeRepo) {
     .filter((pr) => pr.sha);
 }
 
-/** Lấy screen ID: ưu tiên field `Screen ID` trong body story, sau đó tới tiêu đề.
+/** Hình dạng hợp lệ của mã màn: `3-1`, `1-8+2-9`. Dùng chung cho cả hai đường lấy. */
+const SCREEN_ID_RE = /^\d+-\d+(?:\+\d+-\d+)*$/;
+
+/**
+ * Lấy screen ID của story. Trường `Screen ID` trong body là NGUỒN CHÍNH;
+ * tiêu đề chỉ còn là đường lùi cho story cũ chưa có trường đó.
  *
- *  Tiêu đề theo quy ước `[STORY] [3-1] Tên màn` — 27/30 story đang theo đúng.
- *  Biến thể đã gặp và phải nuốt được: `[STORY][3-1]` (thiếu space), `[1-2 ]` (thừa space).
- *  Story không thuộc màn nào (Design system, Backlog) trả null — đó là kết quả HỢP LỆ.
+ * VÌ SAO TRƯỜNG THẮNG TIÊU ĐỀ:
+ *   Tiêu đề là văn xuôi gõ tay và đã trôi qua thời gian — có story thiếu khoảng
+ *   trắng `[STORY][3-1]`, có story thừa `[1-2 ]`, có story không mang mã màn nào.
+ *   Một ô riêng thì chỉ chứa đúng một giá trị, parse chắc chắn.
+ *
+ * Nhận mọi cách gõ đã gặp:
+ *   ### Screen ID        ← GitHub issue form (`type: input`)
+ *   9-2
+ *
+ *   **Screen ID:** 9-2   ← gõ tay trong markdown
+ *   Screen ID: 9-2
+ *
+ * `N/A`, `_No response_`, `TBD` là câu trả lời HỢP LỆ nghĩa là "story không thuộc
+ * màn nào" (Design system, Backlog...). Lúc đó trả null và bot bỏ qua story —
+ * đúng ý, không phải lỗi. Giá trị rác cũng rơi về null chứ KHÔNG đem đi lọc file,
+ * vì lọc bằng một chuỗi vô nghĩa sẽ im lặng cho ra bảng trống.
  *
  * @param {{title?:string, body?:string}} story
  * @returns {string | null}
  */
 export function extractScreenId(story) {
-  const fromField = /###\s*Screen ID\s*\n+\s*([\d\-+]+)\s*$/m.exec(story?.body ?? "");
-  if (fromField && fromField[1] !== "N/A") return fromField[1].trim();
+  const body = story?.body ?? "";
+
+  const fromHeading = /^#{2,4}\s*Screen\s*ID\s*$\n+\s*(\S+)/im.exec(body);
+  const fromInline = /^\s*\**\s*Screen\s*ID\s*\**\s*[:：]\s*\**\s*(\S+)/im.exec(body);
+
+  const raw = (fromHeading?.[1] ?? fromInline?.[1] ?? "").replace(/[*`_]/g, "").trim();
+  if (SCREEN_ID_RE.test(raw)) return raw;
 
   const fromTitle = /\[STORY\]\s*\[\s*([\d\-+]+)\s*\]/i.exec(story?.title ?? "");
-  return fromTitle ? fromTitle[1].trim() : null;
+  const fromTitleId = fromTitle?.[1].trim();
+  return fromTitleId && SCREEN_ID_RE.test(fromTitleId) ? fromTitleId : null;
 }
