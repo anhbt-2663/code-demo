@@ -14,6 +14,7 @@ import {
   extractScreenId,
 } from "./parse-issue-ref.mjs";
 import { classifyChangedFiles } from "./classify-changed-files.mjs";
+import { resolveAllowedSlots, filterSlotsByPermission } from "./resolve-allowed-slots.mjs";
 import { readSpecRevision, readDesignRevision, fetchFileAtSha } from "./read-artifact-revision.mjs";
 import { renderContextBlock, spliceIntoBody } from "./render-context-block.mjs";
 
@@ -61,6 +62,14 @@ async function main() {
   // Ghi lại nhiều lần là vô hại: mỗi lần chạy đều gom LẠI toàn bộ PR merged của
   // issue rồi dựng lại cả khối, nên cùng dữ liệu vào thì cùng kết quả ra.
 
+  // CỔNG 1 — loại issue: ticket này được phép ghi ô nào?
+  // Đứng TRƯỚC mọi thứ khác để một PR dev task lỡ đụng kèm file spec không làm
+  // story đổi. File là bằng chứng về NỘI DUNG, nhưng loại ticket mới nói được
+  // thay đổi đó có phải việc tài liệu hay không.
+  const { allowed, reason } = resolveAllowedSlots(issue);
+  if (allowed.length === 0) skip(`issue #${issue.number}: ${reason}`);
+  console.log(`🏷  ${reason} → được ghi: ${allowed.join(", ")}`);
+
   const story = issue.parent;
   if (!story) skip(`issue #${issue.number} không có story cha`);
 
@@ -85,10 +94,16 @@ async function main() {
     for (const f of files) shaByPath.set(f.filename, { sha: p.sha, pr: p.number });
   }
 
-  const { slots: rawSlots, ambiguous } = classifyChangedFiles([...shaByPath.keys()], screenId);
+  // CỔNG 2 — file: trong những ô ĐƯỢC PHÉP, PR này đụng tới ô nào?
+  const classified = classifyChangedFiles([...shaByPath.keys()], screenId);
+  const rawSlots = filterSlotsByPermission(classified.slots, allowed);
+  const ambiguous = filterSlotsByPermission(classified.ambiguous, allowed);
+
+  const dropped = Object.keys(classified.slots).filter((k) => !allowed.includes(k));
+  if (dropped.length) console.log(`🚫 bỏ qua ô ngoài quyền của ticket: ${dropped.join(", ")}`);
 
   if (Object.keys(rawSlots).length === 0 && Object.keys(ambiguous).length === 0) {
-    skip("không PR nào đụng nguồn sự thật của màn này");
+    skip("không PR nào đụng nguồn sự thật mà ticket này được phép ghi");
   }
 
   const slots = {};

@@ -22,7 +22,8 @@
     {
       "enabled": true,
       "title": "[BE TASK] Doc API {name}",
-      "labels": ["type:devtask", "team:backend", "category:task"],
+      "_comment": "scope:apidocs là nhãn CẤP QUYỀN cho bot ghi ô API docs. Không có nó, bot phải dò chữ 'Doc API' trong tiêu đề — đổi cách đặt tên task là ô đó im lặng ngừng được điền.",
+      "labels": ["type:devtask", "team:backend", "category:task", "scope:apidocs"],
       "body": "### Task Type\n\nDevelopment - Backend\n\n### Task Category\n\nTask\n\n### Specification\n\nViết hợp đồng API + khai báo OpenAPI cho màn {screen_id}.\n\n### Impact Range\n\n_No response_\n"
     },
     {

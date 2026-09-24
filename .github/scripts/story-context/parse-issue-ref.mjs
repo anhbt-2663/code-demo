@@ -36,6 +36,7 @@ export async function fetchIssueWithParent(ref, token) {
       repository(owner:$owner, name:$repo) {
         issue(number:$number) {
           number title state url
+          labels(first: 20) { nodes { name } }
           parent { number title url body }
           timelineItems(last:50, itemTypes:[CROSS_REFERENCED_EVENT]) {
             nodes {
