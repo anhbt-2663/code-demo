@@ -7,6 +7,7 @@
 | No | Ngày | Target | Người cập nhật | Nội dung sửa đổi |
 | --- | --- | --- | --- | --- |
 | 1.00 | 2026-09-30 | - | Demo | Tạo mới |
+| 1.01 | 2026-09-30 | - | Demo | Giới hạn tiêu đề tối đa 100 ký tự |
 
 ## Tổng quan
 
@@ -21,7 +22,7 @@
 
 | No | Tên | Loại | Bắt buộc |
 | --- | --- | --- | --- |
-| 1 | Tiêu đề thông báo | text input | ✓ |
+| 1 | Tiêu đề thông báo (tối đa 100 ký tự) | text input | ✓ |
 | 2 | Nội dung | textarea | ✓ |
 | 3 | Nút "Đăng" | button | — |
 | 4 | Nút "Huỷ" | button | — |
