@@ -2,9 +2,10 @@
 // rồi LỌC theo screen ID của story.
 //
 // VÌ SAO PHẢI LỌC:
-//   Một PR spec thường đụng nhiều màn cùng lúc. Đã gặp: một PR spec tiêu đề chỉ nói về một màn
-//   nhưng đụng file của bốn màn cộng vài tài liệu chung. Ghi mù nghĩa là story
-//   màn A mọc link spec của màn B — nhiễu, người đọc không biết cái nào của mình.
+//   Một PR spec thường đụng nhiều màn cùng lúc. Ca thật: PR #213 tiêu đề chỉ nói về
+//   màn 3-4 nhưng file thì đụng 2-2, 3-1, 3-3, 3-4 cộng 3 tài liệu chung. Ghi mù
+//   nghĩa là story màn 3-1 mọc link spec của 3-4 — nhiễu, và người đọc không biết
+//   cái nào là của mình.
 
 /** Tài liệu dùng chung cho MỌI màn — không thuộc story nào, không bao giờ ghi vào ô. */
 const SHARED_DOC_PREFIXES = [
@@ -25,10 +26,10 @@ const escapeRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * Đường dẫn có thuộc màn này không?
  *
  * Tên thư mục/file mở đầu bằng mã màn rồi tới `_`, khoảng trắng, hoặc `(`:
- *   Spec/3-1_Screen Name(EN)/spec.md          → dir  "3-1_..."
- *   Spec/1-1_Screen Name(Login).md            → file "1-1_..."  (file phẳng)
- *   Design/P1_Group/3-1 Screen Name.dc.html   → file "3-1 ..."
- *   Design/P4_Group/2-4_Screen Name/html/...  → dir  "2-4_..."
+ *   Spec/3-1_パスワード変更リクエスト画面(...)/...     → dir  "3-1_..."
+ *   Spec/1-1_お客様ログイン画面(Login).md              → file "1-1_..."   (file phẳng)
+ *   Design/P1_Authentication/3-1 Password Reset.dc.html → file "3-1 ..."
+ *   Design/P4_Staff Property/2-4_物件一覧画面/html/... → dir  "2-4_..."
  *
  * Ràng buộc ký tự phía sau là CỐ Ý: không có nó thì `2-1` khớp luôn `2-17`.
  */
@@ -47,7 +48,6 @@ function belongsToScreen(path, screenId) {
 export function classifyChangedFiles(files, screenId) {
   const specs = [];
   const designs = [];
-  const apiDocs = [];
 
   for (const p of files) {
     if (isSharedDoc(p)) continue;
@@ -58,11 +58,6 @@ export function classifyChangedFiles(files, screenId) {
     }
     if (p.startsWith("Design/") && p.endsWith(".dc.html")) {
       if (screenId && belongsToScreen(p, screenId)) designs.push(p);
-      continue;
-    }
-    if (/^develop\/backend\/lib\/openapi\/paths-[\w-]+\.ts$/.test(p)) {
-      // API docs không mang mã màn trong đường dẫn ⇒ không lọc được theo screenId.
-      apiDocs.push(p);
     }
   }
 
@@ -76,7 +71,6 @@ export function classifyChangedFiles(files, screenId) {
   assign(slots, ambiguous, "spec_jp", specJp);
   assign(slots, ambiguous, "spec_vi", specVi);
   assign(slots, ambiguous, "design", designs);
-  assign(slots, ambiguous, "api_docs", apiDocs);
 
   return { slots, ambiguous };
 }

@@ -19,20 +19,18 @@ name: PR link gate
 
 on:
   pull_request:
-    # KHÔNG có `synchronize` — CÓ CHỦ Ý.
+    # `synchronize` (mỗi lần push vào nhánh PR) là BẮT BUỘC, dù gate chỉ đọc mô tả PR.
     #
-    # `synchronize` bắn mỗi lần push vào nhánh PR, mà gate này chỉ đọc MÔ TẢ PR —
-    # push code không đổi mô tả. Trên repo nhiều PR, thêm `synchronize` làm
-    # số lượt tăng gấp đôi, toàn bộ phần tăng là chạy không.
-    # Repo private nên mỗi lượt bị tính tròn 1 phút, dù job chỉ chạy 20 giây —
-    # số LƯỢT mới là thứ tốn tiền, không phải thời lượng.
+    # Gate được đặt là required check trong branch protection. GitHub chấm required
+    # check theo TỪNG COMMIT: push commit mới mà gate không chạy thì commit đó không
+    # có kết quả ⇒ PR treo "Waiting for status…" và nút Merge bị khoá cho tới khi
+    # ai đó sửa mô tả. Tốn thêm lượt chạy là giá của một cổng không làm kẹt PR.
     #
-    # `edited` giữ lại vì đó là đường sửa sai: gate đỏ → dev sửa mô tả → chạy lại.
-    types: [opened, edited, reopened]
+    # `edited` là đường sửa sai: gate đỏ → dev sửa mô tả → chạy lại.
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   contents: read
-  pull-requests: write
 
 concurrency:
   group: pr-link-gate-${{ github.event.pull_request.number }}
@@ -52,7 +50,7 @@ jobs:
 
       - name: Issue phải liên kết được
         env:
-          # Cần quyền ĐỌC repo quản lý. Thiếu secret thì gate báo rõ lý do
+          # Cần `Issues: read` trên repo quản lý. Thiếu secret thì gate báo rõ lý do
           # thay vì xanh thầm — xanh thầm là cách lưới chết mà không ai biết.
           GH_TOKEN: ${{ secrets.PM_REPO_TOKEN }}
           # Repo chứa issue. Đặt biến repo PM_REPO khi chạy trên cặp repo khác (bản thử nghiệm).

@@ -1,10 +1,13 @@
 // Entry của `story-context-sync`: PR merged → tìm story cha → ghi References & Dependencies.
 //
 // Biến môi trường:
-//   GH_TOKEN      token có `Issues: write` trên repo QUẢN LÝ (App hoặc PAT).
+//   GH_TOKEN      token (App hoặc PAT) có quyền trên CẢ HAI repo:
+//                   repo quản lý: `Issues: write`
+//                   repo code   : `Pull requests: read` + `Contents: read`
 //                 GITHUB_TOKEN mặc định KHÔNG ghi được sang repo khác.
 //   PR_NUMBER     số PR vừa merged (repo code)
 //   GITHUB_REPOSITORY  owner/repo của repo code (Actions tự set)
+//   PM_REPO       owner/repo của repo quản lý — repo DUY NHẤT bot được phép ghi story
 //   DRY_RUN       "1" ⇒ chỉ in ra, không ghi. Dùng cho lần chạy thử đầu tiên.
 
 import {
@@ -12,16 +15,23 @@ import {
   fetchIssueWithParent,
   mergedPullRequests,
   extractScreenId,
+  isPmRepoRef,
 } from "./parse-issue-ref.mjs";
 import { classifyChangedFiles } from "./classify-changed-files.mjs";
 import { resolveAllowedSlots, filterSlotsByPermission } from "./resolve-allowed-slots.mjs";
 import { readSpecRevision, readDesignRevision, fetchFileAtSha } from "./read-artifact-revision.mjs";
-import { renderContextBlock, spliceIntoBody } from "./render-context-block.mjs";
+import {
+  renderContextBlock,
+  spliceIntoBody,
+  readPreviousContext,
+  mergeWithPrevious,
+} from "./render-context-block.mjs";
 
 const TOKEN = process.env.GH_TOKEN;
 const PR_NUMBER = Number(process.env.PR_NUMBER);
 const [CODE_OWNER, CODE_REPO] = (process.env.GITHUB_REPOSITORY ?? "").split("/");
 const DRY_RUN = process.env.DRY_RUN === "1";
+const PM_REPO = process.env.PM_REPO ?? "anhbt-2663/pm-demo";
 
 const api = async (path, init = {}) => {
   const res = await fetch(`https://api.github.com${path}`, {
@@ -47,8 +57,9 @@ async function main() {
   const ref = await resolveIssueRef();
   if (!ref) skip("không xác định được issue");
 
+  // Lỗi mạng / API ở đây NÉM ra main().catch ⇒ exit 1 ⇒ đỏ. Chỉ "không tồn tại" mới bỏ qua.
   const issue = await fetchIssueWithParent(ref, TOKEN);
-  if (!issue) skip(`không đọc được issue ${ref.owner}/${ref.repo}#${ref.number} (thiếu quyền?)`);
+  if (!issue) skip(`issue ${ref.owner}/${ref.repo}#${ref.number} không tồn tại (hoặc token không thấy)`);
 
   // TRẠNG THÁI ISSUE KHÔNG ĐƯỢC XÉT TỚI — có chủ ý.
   //
@@ -78,9 +89,9 @@ async function main() {
 
   // Gộp file của MỌI PR đã merged thuộc issue này, không chỉ PR vừa kích hoạt.
   // Lấy một PR thì mất phần của những PR còn lại.
-  const prs = mergedPullRequests(issue, `${CODE_OWNER}/${CODE_REPO}`);
+  const prs = mergedPullRequests(issue, `${CODE_OWNER}/${CODE_REPO}`, ref);
   if (prs.length === 0) {
-    skip(`issue #${issue.number} không có PR merged nào (đóng tay?)`);
+    skip(`issue #${issue.number} không có PR merged nào ghi \`Related Issue:\` trỏ tới nó`);
   }
   console.log(`🔗 ${prs.length} PR: ${prs.map((p) => `#${p.number}`).join(", ")}`);
 
@@ -91,7 +102,12 @@ async function main() {
     const files = await api(
       `/repos/${CODE_OWNER}/${CODE_REPO}/pulls/${p.number}/files?per_page=100`,
     );
-    for (const f of files) shaByPath.set(f.filename, { sha: p.sha, pr: p.number });
+    for (const f of files) {
+      // PR sau xoá / đổi tên file ⇒ đường dẫn cũ không còn ở nhánh chính, link sẽ 404.
+      if (f.previous_filename) shaByPath.delete(f.previous_filename);
+      if (f.status === "removed") shaByPath.delete(f.filename);
+      else shaByPath.set(f.filename, { sha: p.sha, pr: p.number });
+    }
   }
 
   // CỔNG 2 — file: trong những ô ĐƯỢC PHÉP, PR này đụng tới ô nào?
@@ -112,16 +128,19 @@ async function main() {
     slots[key] = await describeArtifact(key, path, shaByPath.get(path).sha, issue.number);
   }
 
+  // Đọc lại body ngay trước khi ghi: giảm cửa sổ đè lên thay đổi của người khác.
+  const fresh = await api(`/repos/${ref.owner}/${ref.repo}/issues/${story.number}`);
+
+  // Chỉ thay ô của ticket này; ô do ticket khác ghi giữ nguyên.
+  const merged = mergeWithPrevious(readPreviousContext(fresh.body), { slots, ambiguous }, allowed);
+
   const block = renderContextBlock({
     screen_id: screenId,
-    slots,
-    ambiguous,
+    slots: merged.slots,
+    ambiguous: merged.ambiguous,
     source_issue: issue.number,
     synced_at: new Date().toISOString(),
   });
-
-  // Đọc lại body ngay trước khi ghi: giảm cửa sổ đè lên thay đổi của người khác.
-  const fresh = await api(`/repos/${ref.owner}/${ref.repo}/issues/${story.number}`);
   const body = spliceIntoBody(fresh.body, block);
 
   if (DRY_RUN) {
@@ -136,7 +155,7 @@ async function main() {
   });
   console.log(`✅ đã cập nhật story #${story.number}`);
 
-  if (Object.keys(ambiguous).length > 0) {
+  if (Object.keys(merged.ambiguous).length > 0) {
     await api(`/repos/${ref.owner}/${ref.repo}/issues/${story.number}/labels`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -157,7 +176,10 @@ async function main() {
 async function resolveIssueRef() {
   if (process.env.ISSUE_REF) {
     const ref = parseIssueRef(`Related Issue: ${process.env.ISSUE_REF}`);
-    if (!ref) console.error(`⚠️  ISSUE_REF sai định dạng: ${process.env.ISSUE_REF}`);
+    // Chạy tay mà gõ sai thì phải đỏ — người bấm đang chờ kết quả, xanh thầm là lừa họ.
+    if (!ref || !isPmRepoRef(ref, PM_REPO)) {
+      throw new Error(`ISSUE_REF phải có dạng ${PM_REPO}#N, nhận được: ${process.env.ISSUE_REF}`);
+    }
     return ref;
   }
 
@@ -166,6 +188,8 @@ async function resolveIssueRef() {
 
   const ref = parseIssueRef(pr.body);
   if (!ref) skip("PR body không có dòng `Related Issue: owner/repo#N`");
+  // Gate đã chặn trước merge; đây là lớp thứ hai cho PR merge lúc gate chưa bật.
+  if (!isPmRepoRef(ref, PM_REPO)) skip(`issue nằm ở ${ref.owner}/${ref.repo}, không phải ${PM_REPO}`);
   return ref;
 }
 
@@ -189,7 +213,7 @@ async function describeArtifact(key, path, sha, issueNumber) {
     return { ...base, rev: readDesignRevision(content) };
   }
 
-  return base; // api_docs: .ts không có khái niệm rev
+  return base;
 }
 
 main().catch((err) => {

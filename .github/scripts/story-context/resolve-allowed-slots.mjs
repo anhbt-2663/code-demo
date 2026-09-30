@@ -9,6 +9,11 @@
 //   nhãn/tiêu đề issue  →  ô nào được phép     (file này)
 //   file PR đụng        →  ô đó điền gì        (classify-changed-files.mjs)
 //
+// CHỈ TICKET [DOCUMENTATION] ĐƯỢC GHI — quyết định của dự án:
+//   Tài liệu của màn (spec JP/VI + design) do ticket DOCUMENTATION sở hữu. Các ticket
+//   khác (FE/BE, UI DESIGN, Doc API) không ghi vào story. Khi cần tự động điền ô
+//   API docs thì làm thành một hạng mục riêng, không nhồi vào cổng này.
+//
 // NHÃN TRƯỚC, TIÊU ĐỀ SAU:
 //   Nhãn do template issue tự gắn, không ai gõ tay nên không sai chính tả. Nhưng
 //   nhãn VẪN CÓ THỂ THIẾU — đã gặp issue tạo ngoài template, không mang nhãn nào.
@@ -16,25 +21,8 @@
 
 const SPEC_SLOTS = ["spec_jp", "spec_vi", "design"];
 
-/** Ticket tài liệu: nguồn của spec JP/VI và design. */
 const isDocumentation = (labels, title) =>
   labels.includes("type:documentation") || /^\s*\[DOCUMENTATION\]/i.test(title);
-
-/** Ticket thiết kế UI: chỉ cấp quyền cho ô design. */
-const isUiDesign = (labels, title) =>
-  labels.includes("type:uidesign") || /^\s*\[UI\s*DESIGN\]/i.test(title);
-
-/**
- * Ticket khai báo API.
- *
- * Nhãn KHÔNG phân biệt được: `[BE TASK] Doc API …` và `[BE TASK] Implement API …`
- * mang đúng cùng bộ nhãn (`type:devtask` + `team:backend`). Khác biệt duy nhất
- * nằm ở tiêu đề, nên ở đây buộc phải dò chữ — và đó là chỗ yếu đã biết:
- * ai đổi cách đặt tên task thì ô API docs im lặng ngừng được điền.
- * Muốn chắc thì thêm một nhãn riêng (ví dụ `scope:apidocs`) rồi ưu tiên nó.
- */
-const isApiDocs = (labels, title) =>
-  labels.includes("scope:apidocs") || /\bdoc(?:s|umentation)?\s+api\b/i.test(title);
 
 /**
  * @param {{title?:string, labels?:{nodes?:{name:string}[]}}} issue
@@ -49,15 +37,9 @@ export function resolveAllowedSlots(issue) {
   if (isDocumentation(labels, title)) {
     return { allowed: [...SPEC_SLOTS], reason: "ticket DOCUMENTATION" };
   }
-  if (isApiDocs(labels, title)) {
-    return { allowed: ["api_docs"], reason: "ticket khai báo API" };
-  }
-  if (isUiDesign(labels, title)) {
-    return { allowed: ["design"], reason: "ticket UI DESIGN" };
-  }
 
   const seen = labels.length ? labels.join(", ") : "(không có nhãn nào)";
-  return { allowed: [], reason: `không phải ticket tài liệu — nhãn: ${seen}` };
+  return { allowed: [], reason: `không phải ticket DOCUMENTATION — nhãn: ${seen}` };
 }
 
 /** Bỏ khỏi kết quả phân loại những ô mà loại issue này không được phép ghi. */

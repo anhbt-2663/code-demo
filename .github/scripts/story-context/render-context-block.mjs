@@ -14,17 +14,16 @@ const END = "auto:context:end -->";
 // script chạy được trên cặp repo khác (ví dụ repo cá nhân dùng chạy thử).
 const CODE_REPO = process.env.GITHUB_REPOSITORY ?? "anhbt-2663/code-demo";
 
-const LABELS = {
+export const LABELS = {
   spec_jp: "Spec JP",
   spec_vi: "Spec VI",
   design: "Design",
-  api_docs: "API docs",
 };
 
 /** Link GHIM SHA, không trỏ nhánh.
  *  Story ghi "Ver 1.14" mà link trỏ `develop` thì tháng sau bấm vào ra Ver 1.17 —
  *  số và link nói hai chuyện khác nhau, tệ hơn là không có link. */
-const blobUrl = (path, sha) =>
+export const blobUrl = (path, sha) =>
   `https://github.com/${CODE_REPO}/blob/${sha}/` +
   path.split("/").map(encodeURIComponent).join("/");
 
@@ -33,6 +32,7 @@ const blobUrl = (path, sha) =>
  * @param {string|null} ctx.screen_id
  * @param {Record<string, {path:string, rev:string|null, updated:string|null, sha:string, issue:number|null}>} ctx.slots
  * @param {Record<string, string[]>} [ctx.ambiguous]
+ * @param {number} ctx.source_issue issue của lượt ghi này
  * @param {string} ctx.synced_at ISO string
  */
 export function renderContextBlock(ctx) {
@@ -52,58 +52,110 @@ export function renderContextBlock(ctx) {
     ...rows,
   ].join("\n");
 
+  // Mỗi giá trị là JSON một dòng — JSON là YAML hợp lệ, nên AI đọc như YAML được,
+  // còn bot đọc lại bằng JSON.parse mà không cần thư viện YAML.
+  const ambiguous = ctx.ambiguous ?? {};
   const yaml = [
-    `screen_id: ${ctx.screen_id ? JSON.stringify(ctx.screen_id) : "null"}`,
-    ...Object.entries(ctx.slots).map(([k, s]) =>
-      `${k}: { path: ${JSON.stringify(s.path)}, rev: ${s.rev ? JSON.stringify(s.rev) : "null"}, ` +
-      `updated: ${s.updated ? JSON.stringify(s.updated) : "null"}, sha: ${JSON.stringify(s.sha)}, ` +
-      `issue: ${s.issue ?? "null"} }`,
-    ),
+    `screen_id: ${JSON.stringify(ctx.screen_id ?? null)}`,
+    ...Object.entries(ctx.slots).map(([k, s]) => `${k}: ${JSON.stringify(s)}`),
+    ...(Object.keys(ambiguous).length ? [`ambiguous: ${JSON.stringify(ambiguous)}`] : []),
     `synced_at: ${JSON.stringify(ctx.synced_at)}`,
   ].join("\n");
 
-  // KHÔNG có nhãn "tạm / đã chốt" — có chủ ý.
-  //
-  // Bảng luôn phản ánh trạng thái ĐÃ MERGED mới nhất: spec đổi tiếp ⇒ PR mới ⇒
-  // merge ⇒ bảng cập nhật. Một nhãn nói "ticket DOCUMENTATION đã đóng hay chưa"
-  // là chép lại thứ nhìn thẳng vào ticket là biết — thông tin trùng lặp, và mọi
-  // bản sao đều có ngày lệch khỏi bản gốc.
+  // KHÔNG có nhãn "tạm / đã chốt" — có chủ ý: bảng luôn phản ánh bản ĐÃ MERGED
+  // mới nhất. Trạng thái ticket thì nhìn thẳng vào ticket, không chép lại ở đây.
   const note =
-    `<sub>🤖 \`story-context-sync\` · nguồn #${ctx.source_issue} · ` +
+    `<sub>🤖 \`story-context-sync\` · lần ghi gần nhất từ #${ctx.source_issue} · ` +
     `${ctx.synced_at.slice(0, 16).replace("T", " ")} UTC</sub>`;
 
+  // Phần "cần xác nhận" nằm TRƯỚC marker END ⇒ nằm trong vùng bị thay mỗi lần chạy.
+  // Để nó sau END thì mỗi lượt chạy lại chèn thêm một bản, không bao giờ xoá được.
   return [
     "### References & Dependencies",
     "",
     table,
     "",
     note,
+    ...renderAmbiguous(ambiguous),
     "",
     START,
     yaml,
     END,
-    ...renderAmbiguous(ctx.ambiguous),
   ].join("\n");
 }
 
-/** Ô còn 2+ ứng viên: ghi phần chắc rồi để lại checkbox cho người chọn.
- *
- *  Bot chạy khi PR ĐÃ merged, không có ai ngồi đó để hỏi đồng bộ — nên hỏi rồi đi.
- *  Hiện KHÔNG có workflow nào nhặt lại ô đã tick: người tự sửa dòng trong bảng.
- *  Ca này hiếm (bộ lọc theo screen_id đã loại gần hết mơ hồ), nên chưa đáng dựng
- *  thêm một workflow chỉ để đọc checkbox. */
+/** Ô còn 2+ ứng viên: liệt kê để người đọc biết nên mở file nào.
+ *  Là danh sách thường, KHÔNG phải checkbox — chưa có bot nào đọc lựa chọn của người,
+ *  checkbox sẽ khiến người ta tick rồi ngồi chờ một thứ không bao giờ xảy ra. */
 function renderAmbiguous(ambiguous) {
-  const entries = Object.entries(ambiguous ?? {});
+  const entries = Object.entries(ambiguous);
   if (entries.length === 0) return [];
 
-  const lines = ["", "---", "", "⚠️ **Cần xác nhận** — tick đúng 1 ô mỗi mục, bot sẽ tự điền vào bảng trên:", ""];
+  const lines = ["", "⚠️ **Cần xác nhận** — nhiều file cùng khớp, bot không tự chọn được:", ""];
   for (const [key, paths] of entries) {
     lines.push(`**${LABELS[key] ?? key}**`);
-    for (const p of paths) lines.push(`- [ ] \`${p}\``);
-    lines.push(`- [ ] Không cái nào`);
+    for (const p of paths) lines.push(`- \`${p}\``);
     lines.push("");
   }
   return lines;
+}
+
+/**
+ * Đọc lại các ô đã ghi ở lần trước, từ khối YAML trong marker.
+ * Body chưa có khối, hoặc dòng nào hỏng ⇒ coi như chưa có ô đó (không ném).
+ *
+ * @param {string} body
+ * @returns {{slots: Record<string, object>, ambiguous: Record<string, string[]>}}
+ */
+export function readPreviousContext(body) {
+  const src = body ?? "";
+  const i = src.indexOf(START);
+  const j = src.indexOf(END);
+  const out = { slots: {}, ambiguous: {} };
+  if (i === -1 || j <= i) return out;
+
+  for (const line of src.slice(i + START.length, j).split("\n")) {
+    const m = /^(\w+):\s*(\{.*\})\s*$/.exec(line.trim());
+    if (!m) continue;
+    try {
+      const value = JSON.parse(m[2]);
+      if (m[1] === "ambiguous") out.ambiguous = value;
+      else if (m[1] in LABELS) out.slots[m[1]] = value;
+    } catch {
+      // Dòng bị người sửa tay làm hỏng — bỏ dòng đó, lần ghi của ticket sở hữu sẽ dựng lại.
+    }
+  }
+  return out;
+}
+
+/**
+ * Gộp kết quả lần này với lần trước.
+ *
+ * VÌ SAO: mỗi lượt chạy chỉ biết về MỘT ticket. Hiện chỉ ticket DOCUMENTATION được
+ * ghi, nhưng một story vẫn có thể có hơn một ticket ghi (ví dụ khi thêm ô API docs
+ * sau này). Dựng lại cả bảng chỉ từ ticket hiện tại thì lượt của ticket này xoá sạch
+ * link mà ticket kia vừa ghi.
+ *
+ *   ô ticket này ĐƯỢC PHÉP ghi   ⇒ lấy kết quả mới (vắng mặt ⇒ xoá, vì đó là sự thật mới)
+ *   ô KHÔNG thuộc quyền ticket   ⇒ giữ nguyên lần trước — không phải việc của lượt này
+ *
+ * @param {{slots:object, ambiguous:object}} prev kết quả readPreviousContext
+ * @param {{slots:object, ambiguous:object}} next kết quả của lượt này
+ * @param {string[]} allowed các ô ticket này được phép ghi
+ */
+export function mergeWithPrevious(prev, next, allowed) {
+  const pick = (prevMap, nextMap) => {
+    const out = {};
+    for (const key of Object.keys(LABELS)) {
+      const value = allowed.includes(key) ? nextMap[key] : prevMap[key];
+      if (value) out[key] = value;
+    }
+    return out;
+  };
+  return {
+    slots: pick(prev.slots, next.slots),
+    ambiguous: pick(prev.ambiguous, next.ambiguous),
+  };
 }
 
 const HEADING = "### References & Dependencies";

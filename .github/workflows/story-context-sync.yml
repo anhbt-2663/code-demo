@@ -1,6 +1,6 @@
 name: Story context sync
 
-# PR merged ⇒ ghi Spec / Design / API docs vào `References & Dependencies` của story cha.
+# PR merged của ticket [DOCUMENTATION] ⇒ ghi Spec JP / Spec VI / Design vào `References & Dependencies` của story cha.
 #
 # VÌ SAO CÓ WORKFLOW NÀY — ca thật:
 #   Template story có sẵn ba ô `- Design: [Link Figma]` / `[Link]` / `[Link]`.
@@ -62,8 +62,12 @@ jobs:
 
       - name: Ghi context vào story cha
         env:
-          # Cần `Issues: write` trên anhbt-2663/pm-demo.
-          # GITHUB_TOKEN mặc định KHÔNG ghi được sang repo khác.
+          # Một token dùng cho HAI repo — tạo token thiếu một bên là bot lỗi ngay bước đầu:
+          #   repo quản lý (anhbt-2663/pm-demo): `Issues: write`
+          #       → đọc ticket + story cha, ghi bảng vào story
+          #   repo code (repo này):              `Pull requests: read` + `Contents: read`
+          #       → đọc PR, danh sách file PR, nội dung spec/README tại commit đã merge
+          # GITHUB_TOKEN mặc định KHÔNG ghi được sang repo khác, nên phải dùng token riêng.
           GH_TOKEN: ${{ secrets.PM_REPO_TOKEN }}
           # Repo chứa issue. Đặt biến repo PM_REPO khi chạy trên cặp repo khác (bản thử nghiệm).
           PM_REPO: ${{ vars.PM_REPO || 'anhbt-2663/pm-demo' }}
