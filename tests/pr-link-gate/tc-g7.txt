@@ -1,0 +1,3 @@
+TC-G7 — issue không tồn tại
+Dòng liên kết trong PR: Related Issue: anhbt-2663/pm-demo#9999
+Kỳ vọng: ❌ đỏ — không tìm thấy
