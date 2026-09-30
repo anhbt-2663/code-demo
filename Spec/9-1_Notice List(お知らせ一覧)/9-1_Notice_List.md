@@ -34,3 +34,5 @@
 | --- | --- | --- |
 | EVT_9-1_01 | Nhấn "Tìm kiếm" | Lọc danh sách theo từ khoá và khoảng ngày |
 | EVT_9-1_02 | Nhấn một dòng | Mở màn chi tiết thông báo |
+
+> Ghi chú: sửa kèm trong PR của màn 9-3 — kiểm TC-S2.
