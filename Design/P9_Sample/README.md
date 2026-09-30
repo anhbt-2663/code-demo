@@ -2,6 +2,10 @@
 
 Design mẫu dùng để chạy thử quy trình tự động hoá. Không phải thiết kế của sản phẩm nào.
 
+## rev4 での変更点（2026-09-30）
+
+1. Thêm màn 9-3 Notice Create.
+
 ## rev3 での変更点（2026-09-24）
 
 1. Thêm màn 9-2 Notice Detail.
