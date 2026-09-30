@@ -2,6 +2,10 @@
 
 Design mẫu dùng để chạy thử quy trình tự động hoá. Không phải thiết kế của sản phẩm nào.
 
+## rev5 での変更点（2026-09-30）
+
+1. 9-3: giới hạn tiêu đề 100 ký tự.
+
 ## rev4 での変更点（2026-09-30）
 
 1. Thêm màn 9-3 Notice Create.
