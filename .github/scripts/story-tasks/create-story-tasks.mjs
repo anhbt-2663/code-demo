@@ -14,6 +14,7 @@
 
 import { readFileSync } from "node:fs";
 import { execSync } from "node:child_process";
+import { screenIdFromTitle } from "../story-context/parse-issue-ref.mjs";
 
 const PM_REPO = process.env.PM_REPO ?? "anhbt-2663/pm-demo";
 const [OWNER, REPO] = PM_REPO.split("/");
@@ -48,12 +49,12 @@ const gql = async (query, variables = {}) => {
 };
 
 /** Tên màn = phần sau `[STORY] [x-y]`. Dùng để điền `{name}` vào tiêu đề task.
- *  `[STORY] [3-1] Notice List/<bản dịch>` → `Notice List`
- *  Cắt ở `/` vì bản dịch phía sau làm tiêu đề task dài gấp đôi mà không thêm nghĩa. */
+ *  `[STORY] [3-1] Request update PW/パスワード変更リクエスト` → `Request update PW`
+ *  Cắt ở `/` vì bản tiếng Nhật phía sau làm tiêu đề task dài gấp đôi mà không thêm nghĩa. */
 function parseStoryTitle(title) {
-  const m = /\[STORY\]\s*\[\s*([\d\-+]+)\s*\]\s*(.+)$/i.exec(title);
+  const m = /\[STORY\]\s*\[[\d\-+\s]+\]\s*(.+)$/i.exec(title);
   if (!m) return { screenId: null, name: title.trim() };
-  return { screenId: m[1].trim(), name: m[2].split("/")[0].trim() };
+  return { screenId: screenIdFromTitle(title), name: m[1].split("/")[0].trim() };
 }
 
 const fill = (s, v) => s.replaceAll("{name}", v.name).replaceAll("{screen_id}", v.screenId ?? "—");

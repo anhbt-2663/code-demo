@@ -1,11 +1,11 @@
 // Cổng chặn: PR phải liên kết được với một issue có thật ở repo quản lý.
 // Exit != 0 ⇒ CI đỏ ⇒ không merge được. Đây là cổng, không phải lời nhắc.
 
-import { parseIssueRef, fetchIssueWithParent } from "./parse-issue-ref.mjs";
+import { parseIssueRef, fetchIssueWithParent, isPmRepoRef } from "./parse-issue-ref.mjs";
 
 const token = process.env.GH_TOKEN;
 const body = process.env.PR_BODY ?? "";
-// Chỉ dùng cho thông báo lỗi. Đặt PM_REPO khi chạy trên cặp repo khác (repo thử nghiệm).
+// Repo duy nhất được phép chứa issue. Đặt PM_REPO khi chạy trên cặp repo khác (repo thử nghiệm).
 const PM_REPO = process.env.PM_REPO ?? "anhbt-2663/pm-demo";
 
 if (!token) {
@@ -26,7 +26,21 @@ if (!ref) {
   process.exit(1);
 }
 
-const issue = await fetchIssueWithParent(ref, token);
+if (!isPmRepoRef(ref, PM_REPO)) {
+  console.error(`❌ Issue phải nằm ở ${PM_REPO}, không phải ${ref.owner}/${ref.repo}.`);
+  console.error(`   Đúng:  Related Issue: ${PM_REPO}#${ref.number}`);
+  process.exit(1);
+}
+
+let issue;
+try {
+  issue = await fetchIssueWithParent(ref, token);
+} catch (err) {
+  // Lỗi hạ tầng, không phải lỗi của người viết PR — nói rõ để họ không đi sửa mô tả vô ích.
+  console.error(`❌ Gọi GitHub API thất bại: ${err.message}`);
+  console.error("   Không phải lỗi mô tả PR. Bấm Re-run job sau ít phút.");
+  process.exit(1);
+}
 if (!issue) {
   console.error(`❌ Không tìm thấy ${ref.owner}/${ref.repo}#${ref.number}.`);
   console.error("   Kiểm tra lại số issue, hoặc token thiếu quyền đọc repo đó.");

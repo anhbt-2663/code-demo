@@ -25,7 +25,7 @@ export function readSpecRevision(content) {
   return { rev: last[1], updated: last[2] === "-" ? null : last[2] };
 }
 
-/** `## rev15 …` — bản mới nhất nằm TRÊN CÙNG. */
+/** `## rev15 での変更点（2026/09/18）` — bản mới nhất nằm TRÊN CÙNG. */
 const DESIGN_REV_RE = /^##\s*rev(\d+)\s/m;
 
 /**
@@ -39,7 +39,8 @@ export function readDesignRevision(readmeContent) {
 
 /**
  * Tải nội dung một file tại đúng commit SHA (không trỏ nhánh).
- * Trả null khi không có file — caller coi đó là "không có rev", không phải lỗi.
+ * Trả null khi không có file (404) — caller coi đó là "không có rev", không phải lỗi.
+ * Mọi lỗi khác thì NÉM: nuốt 5xx thành null là bảng mất số rev mà không ai biết.
  */
 export async function fetchFileAtSha({ owner, repo, path, sha, token }) {
   const url =
@@ -49,5 +50,7 @@ export async function fetchFileAtSha({ owner, repo, path, sha, token }) {
   const res = await fetch(url, {
     headers: { authorization: `Bearer ${token}`, accept: "application/vnd.github.raw" },
   });
-  return res.ok ? await res.text() : null;
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`GET ${path}@${sha.slice(0, 7)} → ${res.status} ${await res.text()}`);
+  return res.text();
 }

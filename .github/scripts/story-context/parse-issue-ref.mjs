@@ -23,9 +23,19 @@ export function parseIssueRef(body) {
   return { owner: m[1], repo: m[2], number: Number(m[3]) };
 }
 
+/** Ref có trỏ đúng repo quản lý không? So không phân biệt hoa thường — GitHub cũng vậy.
+ *  Thiếu bước này thì `Related Issue: <repo bất kỳ>#1` vẫn qua gate, và bot sync
+ *  đi sửa story ở một repo không liên quan. */
+export const isPmRepoRef = (ref, pmRepo) =>
+  `${ref.owner}/${ref.repo}`.toLowerCase() === (pmRepo ?? "").toLowerCase();
+
 /**
  * Xác minh issue tồn tại và lấy parent (story cha) qua GraphQL.
- * Trả về null nếu không truy cập được — KHÔNG ném, để caller quyết định đỏ hay bỏ qua.
+ *
+ * Hai kiểu thất bại, xử lý KHÁC nhau:
+ *   issue không tồn tại         ⇒ trả null  (lỗi của người viết PR)
+ *   mạng / 5xx / rate limit / … ⇒ NÉM LỖI   (lỗi hạ tầng — phải hiện đỏ, không được
+ *                                            lẫn vào "không có gì để làm" rồi xanh thầm)
  *
  * @param {{owner:string, repo:string, number:number}} ref
  * @param {string} token phải có quyền đọc repo quản lý
@@ -35,7 +45,7 @@ export async function fetchIssueWithParent(ref, token) {
     query($owner:String!, $repo:String!, $number:Int!) {
       repository(owner:$owner, name:$repo) {
         issue(number:$number) {
-          number title state url
+          number title state url body
           labels(first: 20) { nodes { name } }
           parent { number title url body }
           timelineItems(last:50, itemTypes:[CROSS_REFERENCED_EVENT]) {
@@ -43,7 +53,7 @@ export async function fetchIssueWithParent(ref, token) {
               ... on CrossReferencedEvent {
                 source {
                   ... on PullRequest {
-                    number merged mergedAt
+                    number merged mergedAt body
                     mergeCommit { oid }
                     repository { nameWithOwner }
                   }
@@ -66,8 +76,14 @@ export async function fetchIssueWithParent(ref, token) {
     body: JSON.stringify({ query, variables: ref }),
   });
 
-  if (!res.ok) return null;
+  if (!res.ok) throw new Error(`GraphQL → HTTP ${res.status} ${await res.text()}`);
   const json = await res.json();
+
+  // GraphQL trả HTTP 200 kể cả khi lỗi — lỗi nằm trong `errors`. Chỉ NOT_FOUND
+  // mới nghĩa là "issue không có"; mọi loại khác là hạ tầng hỏng.
+  const fatal = (json.errors ?? []).filter((e) => e.type !== "NOT_FOUND");
+  if (fatal.length) throw new Error(`GraphQL → ${JSON.stringify(fatal)}`);
+
   return json?.data?.repository?.issue ?? null;
 }
 
@@ -84,14 +100,26 @@ export async function fetchIssueWithParent(ref, token) {
  *   `Closes owner/repo#N` mà vẫn trả 0. Còn cross-reference thì chạy. Đây là chỉ mục gốc của GitHub, không
  *   phải quy ước tự chế, nên không hỏng khi ai đó đổi cách viết mô tả PR.
  *
+ * NHƯNG "NHẮC TỚI" CHƯA PHẢI "THUỘC VỀ":
+ *   Cross-reference sinh ra từ MỌI lần nhắc — PR của ticket FE ghi "làm theo spec ở
+ *   …#10" cũng thành một cross-ref của #10, và PR đã sửa body sang issue khác vẫn giữ
+ *   cross-ref cũ. Nên mỗi PR phải được đọc lại dòng `Related Issue:` của CHÍNH nó:
+ *   chỉ PR trỏ đúng issue này mới được tính.
+ *
  * @param {object} issue kết quả của fetchIssueWithParent
  * @param {string} codeRepo "owner/repo" của repo code — lọc bỏ PR từ repo khác
+ * @param {{owner:string, repo:string, number:number}} ref issue đang xử lý
  */
-export function mergedPullRequests(issue, codeRepo) {
+export function mergedPullRequests(issue, codeRepo, ref) {
+  const pointsHere = (pr) => {
+    const own = parseIssueRef(pr.body);
+    return own && own.number === ref.number && isPmRepoRef(own, `${ref.owner}/${ref.repo}`);
+  };
   const nodes = issue?.timelineItems?.nodes ?? [];
   return nodes
     .map((n) => n?.source)
     .filter((pr) => pr?.merged && pr?.repository?.nameWithOwner === codeRepo)
+    .filter(pointsHere)
     // Cùng một PR có thể xuất hiện nhiều lần trong timeline (mỗi lần sửa mô tả).
     .filter((pr, i, all) => all.findIndex((o) => o.number === pr.number) === i)
     .sort((a, b) => new Date(a.mergedAt) - new Date(b.mergedAt))
@@ -103,6 +131,23 @@ export function mergedPullRequests(issue, codeRepo) {
 
 /** Hình dạng hợp lệ của mã màn: `3-1`, `1-8+2-9`. Dùng chung cho cả hai đường lấy. */
 const SCREEN_ID_RE = /^\d+-\d+(?:\+\d+-\d+)*$/;
+
+/** Bỏ mọi khoảng trắng + ký tự markdown: `1-5 + 2-4` → `1-5+2-4`.
+ *  Tiêu đề story thật gõ màn gộp đủ kiểu (`[1-10 + 2-11]`, `[1-6 +2-7]`) trong khi thư
+ *  mục spec luôn viết liền (`1-8+2-9_…`). Không chuẩn hoá thì cả nhóm story màn gộp
+ *  rơi về null và bot im lặng bỏ qua. */
+const normalizeScreenId = (s) => (s ?? "").replace(/[\s*`_]/g, "");
+
+/**
+ * Mã màn từ tiêu đề `[STORY] [x-y] …`. Dùng chung với create-story-tasks để hai
+ * nơi không hiểu cùng một tiêu đề theo hai cách.
+ * @returns {string | null}
+ */
+export function screenIdFromTitle(title) {
+  const m = /\[STORY\]\s*\[([\d\-+\s]+)\]/i.exec(title ?? "");
+  const id = normalizeScreenId(m?.[1]);
+  return SCREEN_ID_RE.test(id) ? id : null;
+}
 
 /**
  * Lấy screen ID của story. Trường `Screen ID` trong body là NGUỒN CHÍNH;
@@ -131,13 +176,13 @@ const SCREEN_ID_RE = /^\d+-\d+(?:\+\d+-\d+)*$/;
 export function extractScreenId(story) {
   const body = story?.body ?? "";
 
-  const fromHeading = /^#{2,4}\s*Screen\s*ID\s*$\n+\s*(\S+)/im.exec(body);
-  const fromInline = /^\s*\**\s*Screen\s*ID\s*\**\s*[:：]\s*\**\s*(\S+)/im.exec(body);
+  // Lấy CẢ DÒNG giá trị chứ không dừng ở khoảng trắng đầu tiên: `1-5 + 2-4` mà cắt
+  // ở `1-5` thì vẫn là mã hợp lệ — nhưng là mã của một màn khác, lọc sai thư mục.
+  const fromHeading = /^#{2,4}\s*Screen\s*ID\s*$\n\s*([^\n]+)/im.exec(body);
+  const fromInline = /^\s*\**\s*Screen\s*ID\s*\**\s*[:：]\s*\**([^\n]+)/im.exec(body);
 
-  const raw = (fromHeading?.[1] ?? fromInline?.[1] ?? "").replace(/[*`_]/g, "").trim();
+  const raw = normalizeScreenId(fromHeading?.[1] ?? fromInline?.[1]);
   if (SCREEN_ID_RE.test(raw)) return raw;
 
-  const fromTitle = /\[STORY\]\s*\[\s*([\d\-+]+)\s*\]/i.exec(story?.title ?? "");
-  const fromTitleId = fromTitle?.[1].trim();
-  return fromTitleId && SCREEN_ID_RE.test(fromTitleId) ? fromTitleId : null;
+  return screenIdFromTitle(story?.title);
 }
