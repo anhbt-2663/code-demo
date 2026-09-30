@@ -8,6 +8,7 @@
 | --- | --- | --- | --- | --- |
 | 1.00 | 2026-09-23 | - | Demo | Tạo mới |
 | 1.01 | 2026-09-24 | - | Demo | Bổ sung nút quay lại danh sách |
+| 1.02 | 2026-09-30 | - | Demo | Sửa trong PR của ticket FE — kiểm TC-S4 |
 
 ## Tổng quan
 
