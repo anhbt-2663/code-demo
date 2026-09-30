@@ -7,6 +7,7 @@
 | No | Ngày | Target | Người cập nhật | Nội dung sửa đổi |
 | --- | --- | --- | --- | --- |
 | 1.00 | 2026-09-30 | - | Demo | Tạo mới |
+| 1.01 | 2026-09-30 | - | Demo | Giới hạn tiêu đề tối đa 100 ký tự |
 
 ## Tổng quan
 
